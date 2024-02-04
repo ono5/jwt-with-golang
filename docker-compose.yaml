@@ -16,7 +16,7 @@ services:
   db:
     image: postgres:latest
     environment:
-      POSTGRES_DB: books-store
+      POSTGRES_DB: jwt-db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
