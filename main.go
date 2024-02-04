@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/subosito/gotenv"
+
+	_ "github.com/lib/pq"
 )
 
 type User struct {
@@ -59,8 +62,28 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8000", router))
 }
 
+func respondWithError(w http.ResponseWriter, status int, error Error) {
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(error)
+}
+
 func signup(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("successfully called signup"))
+	var user User
+	var error Error
+
+	json.NewDecoder(r.Body).Decode(&user)
+
+	if user.Email == "" {
+		error.Message = "Email is missing."
+		respondWithError(w, http.StatusBadRequest, error)
+		return
+	}
+
+	if user.Password == "" {
+		error.Message = "Password is missing."
+		respondWithError(w, http.StatusBadRequest, error)
+		return
+	}
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
