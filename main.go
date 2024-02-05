@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"github.com/subosito/gotenv"
+	"golang.org/x/crypto/bcrypt"
 
 	_ "github.com/lib/pq"
 )
@@ -42,7 +44,8 @@ func main() {
 		os.Getenv("PORT"),
 		os.Getenv("DBNAME"))
 
-	db, err := sql.Open("postgres", postgresURL)
+	var err error
+	db, err = sql.Open("postgres", postgresURL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -67,6 +70,10 @@ func respondWithError(w http.ResponseWriter, status int, error Error) {
 	json.NewEncoder(w).Encode(error)
 }
 
+func responseJSON(w http.ResponseWriter, data interface{}) {
+	json.NewEncoder(w).Encode(data)
+}
+
 func signup(w http.ResponseWriter, r *http.Request) {
 	var user User
 	var error Error
@@ -84,10 +91,54 @@ func signup(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, error)
 		return
 	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), 10)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	user.Password = string(hash)
+
+	stmt := "insert into users (email, password) values($1, $2) RETURNING id;"
+	err = db.QueryRow(stmt, user.Email, user.Password).Scan(&user.ID)
+	if err != nil {
+		error.Message = "Server error."
+		respondWithError(w, http.StatusInternalServerError, error)
+		return
+	}
+
+	user.Password = ""
+
+	w.Header().Set("Content-Type", "application/json")
+	responseJSON(w, user)
+}
+
+func GenerateToken(user User) (string, error) {
+	var err error
+	secret := "secret"
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"email": user.Email,
+		"iss":   "course",
+	})
+
+	tokenString, err := token.SignedString([]byte(secret))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return tokenString, nil
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("successfully called login"))
+	var user User
+	json.NewDecoder(r.Body).Decode(&user)
+	token, err := GenerateToken(user)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(token)
 }
 
 func protectedEndpoint(w http.ResponseWriter, r *http.Request) {
